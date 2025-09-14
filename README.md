@@ -4,6 +4,15 @@
 
 Native Passkeys on iOS 15.0+ and Android API 28+ using React Native.
 
+## Features
+
+- ✅ **Passkey Registration** - Create new passkey credentials
+- ✅ **Passkey Authentication** - Authenticate using existing passkey credentials  
+- ✅ **Large Blob Extension** - Store additional data with credentials (iOS 17.0+)
+- ✅ **PRF Extension** - Pseudo Random Function extension for iOS (Custom Implementation)
+- ✅ **Platform Authenticators** - Use Touch ID, Face ID, or device passcode
+- ✅ **Cross-Platform Authenticators** - Use external security keys
+
 
 ## Installation
 
@@ -170,9 +179,74 @@ You can force users to register and authenticate using either a platform key, a 
 
 As of version 3.0 the newly added largeBlob extension should work out of the box for iOS only.
 
-#### PRF
+#### PRF (Pseudo Random Function)
 
-As of version 3.0 the newly added largeBlob extension should work out of the box for Android only.
+The PRF extension allows you to derive cryptographically secure keys from passkey credentials. This is useful for creating user-specific encryption keys or other cryptographic operations.
+
+**Note**: PRF support is currently implemented as a custom solution for iOS only. Android support is not available at this time.
+
+```ts
+import { Passkey, AuthenticationExtensionsPRFValues } from 'react-native-passkey';
+
+// Create a request with PRF extension
+const createRequest = {
+  challenge: "your-challenge",
+  rp: { id: "example.com", name: "Example" },
+  user: { id: "user-id", name: "User", displayName: "User" },
+  pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+  extensions: {
+    prf: {
+      eval: {
+        first: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]),
+        second: new Uint8Array([17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32])
+      }
+    }
+  }
+};
+
+try {
+  const result = await Passkey.create(createRequest);
+  
+  // Access PRF results
+  const prfResults = result.extensions?.clientExtensionResults?.prf;
+  if (prfResults?.enabled) {
+    console.log('PRF enabled:', prfResults.enabled);
+    console.log('PRF first result:', prfResults.results?.first);
+    console.log('PRF second result:', prfResults.results?.second);
+  }
+} catch (error) {
+  console.error('PRF operation failed:', error);
+}
+```
+
+**Authentication with PRF:**
+
+```ts
+const authRequest = {
+  challenge: "your-challenge",
+  rpId: "example.com",
+  extensions: {
+    prf: {
+      eval: {
+        first: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]),
+        second: new Uint8Array([17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32])
+      }
+    }
+  }
+};
+
+try {
+  const result = await Passkey.get(authRequest);
+  
+  // Access PRF results
+  const prfResults = result.clientExtensionResults?.prf;
+  if (prfResults?.enabled) {
+    console.log('PRF results:', prfResults.results);
+  }
+} catch (error) {
+  console.error('PRF authentication failed:', error);
+}
+```
 
 ---
 

@@ -127,7 +127,7 @@ enum AuthenticatorTransport {
 /**
  * https://www.w3.org/TR/webauthn-3/#prf-extension
  */
-interface AuthenticationExtensionsPRFValues {
-  first: Uint8Array;
-  second?: Uint8Array;
+export interface AuthenticationExtensionsPRFValues {
+  first: number[];
+  second?: number[];
 }

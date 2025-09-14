@@ -4,9 +4,11 @@ import { Passkey } from '../Passkey';
 
 import AuthRequest from './testData/AuthRequest.json';
 import RegRequest from './testData/RegRequest.json';
+import RegRequestWithPRF from './testData/RegRequestWithPRF.json';
 
 import AuthiOSResult from './testData/AuthiOSResult.json';
 import RegiOSResult from './testData/RegiOSResult.json';
+import RegiOSResultWithPRF from './testData/RegiOSResultWithPRF.json';
 
 describe('Test Passkey Module', () => {
   beforeEach(() => {
@@ -36,5 +38,29 @@ describe('Test Passkey Module', () => {
 
     await Passkey.get(AuthRequest);
     expect(authSpy).toHaveBeenCalled();
+  });
+
+  test('should handle PRF extension in registration', async () => {
+    const registerSpy = jest
+      .spyOn(NativeModules.Passkey, 'create')
+      .mockResolvedValue(RegiOSResultWithPRF);
+
+    const result = await Passkey.create({
+      ...RegRequestWithPRF,
+      extensions: {
+        prf: {
+          eval: {
+            first: new Uint8Array(RegRequestWithPRF.extensions.prf.eval.first),
+            second: new Uint8Array(RegRequestWithPRF.extensions.prf.eval.second)
+          }
+        }
+      }
+    });
+    
+    expect(registerSpy).toHaveBeenCalled();
+    expect(result.extensions?.clientExtensionResults?.prf).toBeDefined();
+    expect(result.extensions?.clientExtensionResults?.prf?.enabled).toBe(true);
+    expect(result.extensions?.clientExtensionResults?.prf?.results?.first).toBeDefined();
+    expect(result.extensions?.clientExtensionResults?.prf?.results?.second).toBeDefined();
   });
 });

@@ -5,9 +5,13 @@ import { Passkey } from 'react-native-passkey';
 
 import RegRequest from './testData/RegRequest.json';
 import AuthRequest from './testData/AuthRequest.json';
+import RegRequestWithPRF from './testData/RegRequestWithPRF.json';
+import AuthRequestWithPRF from './testData/AuthRequestWithPRF.json';
+import CryptoDemo from './CryptoDemo';
 
 export default function App() {
-  const [email, setEmail] = React.useState('h92022566881@gmail.com');
+  const [email, setEmail] = React.useState('h92022566882@gmail.com');
+  const [showCryptoDemo, setShowCryptoDemo] = React.useState(false);
 
   async function createAccount() {
     try {
@@ -23,7 +27,7 @@ export default function App() {
 
       console.log('Registration result: ', result);
       Alert.alert('Success', 'Passkey registration completed!');
-    } catch (e) {
+    } catch (e: any) {
       console.log('Registration error:', e);
       Alert.alert('Error', `Registration failed: ${e.message || e}`);
     }
@@ -43,9 +47,99 @@ export default function App() {
 
       console.log('Authentication result: ', result);
       Alert.alert('Success', 'Passkey authentication completed!');
-    } catch (e) {
+    } catch (e: any) {
       console.log('Authentication error:', e);
       Alert.alert('Error', `Authentication failed: ${e.message || e}`);
+    }
+  }
+
+  async function createAccountWithPRF() {
+    try {
+      console.log('Starting Passkey registration with PRF...');
+      console.log('Request data:', RegRequestWithPRF);
+      
+      const requestJson = {
+        // ...Retrieve request from server
+        ...RegRequestWithPRF,
+        extensions: {
+          prf: {
+            eval: {
+              first: Array.from(RegRequestWithPRF.extensions.prf.eval.first),
+              second: Array.from(RegRequestWithPRF.extensions.prf.eval.second)
+            }
+          }
+        }
+      };
+
+      const result = await Passkey.create(requestJson);
+
+      console.log('Registration with PRF result: ', result);
+      console.log('Full result structure:', JSON.stringify(result, null, 2));
+      
+      // PRF结果在extensions.clientExtensionResults中
+      console.log('Client extension results:', result.extensions?.clientExtensionResults);
+      console.log('PRF results:', result.extensions?.clientExtensionResults?.prf);
+      
+      // 输出PRF结果的详细信息
+      if (result.extensions?.clientExtensionResults?.prf) {
+        console.log('PRF enabled:', result.extensions.clientExtensionResults.prf.enabled);
+        console.log('PRF results data:', result.extensions.clientExtensionResults.prf.results);
+        
+        if (result.extensions.clientExtensionResults.prf.results) {
+          console.log('PRF first result:', result.extensions.clientExtensionResults.prf.results.first);
+          console.log('PRF second result:', result.extensions.clientExtensionResults.prf.results.second);
+        }
+      } else {
+        console.log('PRF results not found in clientExtensionResults');
+      }
+      
+      Alert.alert('Success', 'Passkey registration with PRF completed!');
+    } catch (e: any) {
+      console.log('Registration with PRF error:', e);
+      Alert.alert('Error', `Registration with PRF failed: ${e.message || e}`);
+    }
+  }
+
+  async function authenticateAccountWithPRF() {
+    try {
+      console.log('Starting Passkey authentication with PRF...');
+      console.log('Request data:', AuthRequestWithPRF);
+      
+      const requestJson = {
+        // ...Retrieve request from server
+        ...AuthRequestWithPRF,
+        extensions: {
+          prf: {
+            eval: {
+              first: Array.from(AuthRequestWithPRF.extensions.prf.eval.first),
+              second: Array.from(AuthRequestWithPRF.extensions.prf.eval.second)
+            }
+          }
+        }
+      };
+
+      const result = await Passkey.get(requestJson);
+
+      console.log('Authentication with PRF result: ', result);
+      console.log('Full result structure:', JSON.stringify(result, null, 2));
+      
+      // 输出PRF结果的详细信息
+      if (result.clientExtensionResults?.prf) {
+        console.log('PRF enabled:', result.clientExtensionResults.prf.enabled);
+        console.log('PRF results data:', result.clientExtensionResults.prf.results);
+        
+        if (result.clientExtensionResults.prf.results) {
+          console.log('PRF first result:', result.clientExtensionResults.prf.results.first);
+          console.log('PRF second result:', result.clientExtensionResults.prf.results.second);
+        }
+      } else {
+        console.log('PRF results not found in clientExtensionResults');
+      }
+      
+      Alert.alert('Success', 'Passkey authentication with PRF completed!');
+    } catch (e: any) {
+      console.log('Authentication with PRF error:', e);
+      Alert.alert('Error', `Authentication with PRF failed: ${e.message || e}`);
     }
   }
 
@@ -54,12 +148,32 @@ export default function App() {
     Alert.alert(result ? 'Supported' : 'Not supported');
   }
 
+  if (showCryptoDemo) {
+    return (
+      <View style={styles.container}>
+        <Button 
+          title="← 返回主菜单" 
+          onPress={() => setShowCryptoDemo(false)}
+          color="#666"
+        />
+        <CryptoDemo />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <TextInput placeholder="email" value={email} onChangeText={setEmail} />
       <Button title="Create Account" onPress={createAccount} />
       <Button title="Authenticate" onPress={authenticateAccount} />
+      <Button title="Create Account with PRF" onPress={createAccountWithPRF} />
+      <Button title="Authenticate with PRF" onPress={authenticateAccountWithPRF} />
       <Button title="isSupported?" onPress={isSupported} />
+      <Button 
+        title="PRF 加解密 Demo" 
+        onPress={() => setShowCryptoDemo(true)}
+        color="#4CAF50"
+      />
     </View>
   );
 }

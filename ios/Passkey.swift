@@ -48,7 +48,7 @@ class Passkey: NSObject, RNPasskeyResultHandler {
       // Get authorization controller
       let authController: ASAuthorizationController = self.configureAuthController(forcePlatformKey: forcePlatformKey, forceSecurityKey: forceSecurityKey, platformKeyRequest: platformKeyRequest, securityKeyRequest: securityKeyRequest);
 
-      let passkeyDelegate = PasskeyDelegate(completionHandler: self);
+      let passkeyDelegate = PasskeyDelegate(completionHandler: self, originalRequest: request);
       
       // Keep a reference to the delegate object
       self.passkeyDelegate = passkeyDelegate;
@@ -85,7 +85,7 @@ class Passkey: NSObject, RNPasskeyResultHandler {
       // Get authorization controller
       let authController: ASAuthorizationController = self.configureAuthController(forcePlatformKey: forcePlatformKey, forceSecurityKey: forceSecurityKey, platformKeyRequest: platformKeyRequest, securityKeyRequest: securityKeyRequest);
       
-      let passkeyDelegate = PasskeyDelegate(completionHandler: self);
+      let passkeyDelegate = PasskeyDelegate(completionHandler: self, originalRequest: request);
       
       // Keep a reference to the delegate object
       self.passkeyDelegate = passkeyDelegate;

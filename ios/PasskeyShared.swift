@@ -21,6 +21,12 @@ extension Data {
         return UIntArray;
     }
     var uIntArray: [UInt] { toUIntArray() }
+    
+    // Convert to array of UInt8 for better JavaScript compatibility
+    func toUInt8Array() -> [UInt8] {
+        return Array(self)
+    }
+    var uInt8Array: [UInt8] { toUInt8Array() }
 }
 
 /**
@@ -276,7 +282,7 @@ internal struct PublicKeyCredentialDescriptor: Decodable {
   var type: PublicKeyCredentialType = .publicKey
 
   func getPlatformDescriptor() -> ASAuthorizationPlatformPublicKeyCredentialDescriptor {
-    return ASAuthorizationPlatformPublicKeyCredentialDescriptor.init(credentialID: Data(base64URLEncoded: self.id)!)
+    return ASAuthorizationPlatformPublicKeyCredentialDescriptor.init(credentialID: Data(base64Encoded: self.id)!)
   }
     
   func getCrossPlatformDescriptor() -> ASAuthorizationSecurityKeyPublicKeyCredentialDescriptor {
@@ -286,7 +292,7 @@ internal struct PublicKeyCredentialDescriptor: Decodable {
       transports = self.transports!.compactMap { $0.appleise() }
     }
     
-    return ASAuthorizationSecurityKeyPublicKeyCredentialDescriptor.init(credentialID: Data(base64URLEncoded: self.id)!,
+    return ASAuthorizationSecurityKeyPublicKeyCredentialDescriptor.init(credentialID: Data(base64Encoded: self.id)!,
                                                                         transports: transports)
   }
   
@@ -350,16 +356,93 @@ internal struct AuthenticationExtensionsLargeBlobInputs: Decodable {
   }
 }
 
+/**
+    Specification reference: https://w3c.github.io/webauthn/#dictdef-authenticationextensionsprfinputs
+*/
+internal struct AuthenticationExtensionsPRFInputs: Decodable {
+  var eval: AuthenticationExtensionsPRFValues?
+  var evalByCredential: [String: AuthenticationExtensionsPRFValues]?
+  
+  enum CodingKeys: String, CodingKey {
+    case eval
+    case evalByCredential
+  }
+  
+  init(from decoder: any Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self);
+    
+    eval = try values.decodeIfPresent(AuthenticationExtensionsPRFValues.self, forKey: .eval);
+    evalByCredential = try values.decodeIfPresent([String: AuthenticationExtensionsPRFValues].self, forKey: .evalByCredential);
+  }
+}
+
+/**
+    Specification reference: https://w3c.github.io/webauthn/#dictdef-authenticationextensionsprfvalues
+*/
+internal struct AuthenticationExtensionsPRFValues: Decodable {
+  var first: Data
+  var second: Data?
+  
+  enum CodingKeys: String, CodingKey {
+    case first
+    case second
+  }
+  
+  init(from decoder: any Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self);
+    
+    // Handle different data formats that might come from React Native
+    do {
+      // Try to decode as [Int] first (most common case)
+      let firstArray = try values.decode([Int].self, forKey: .first);
+      first = firstArray.map({ UInt8($0) }).data;
+      
+      let secondArray = try values.decodeIfPresent([Int].self, forKey: .second);
+      second = secondArray?.map({ UInt8($0) }).data;
+    } catch {
+      // Fallback: try to decode as [UInt8] directly
+      do {
+        let firstArray = try values.decode([UInt8].self, forKey: .first);
+        first = firstArray.data;
+        
+        let secondArray = try values.decodeIfPresent([UInt8].self, forKey: .second);
+        second = secondArray?.data;
+      } catch {
+        // Final fallback: try to decode as Data directly
+        do {
+          first = try values.decode(Data.self, forKey: .first);
+          second = try values.decodeIfPresent(Data.self, forKey: .second);
+        } catch {
+          // Try to decode as String and convert
+          let firstString = try values.decode(String.self, forKey: .first);
+          first = Data(base64Encoded: firstString) ?? Data()
+          
+          let secondString = try values.decodeIfPresent(String.self, forKey: .second);
+          second = secondString.flatMap { Data(base64Encoded: $0) }
+        }
+      }
+    }
+  }
+  
+  // Regular initializer for creating instances programmatically
+  init(first: Data, second: Data? = nil) {
+    self.first = first
+    self.second = second
+  }
+}
+
 
 /**
     Specification reference: https://w3c.github.io/webauthn/#dictdef-authenticationextensionsclientinputs
 */
 internal struct AuthenticationExtensionsClientInputs: Decodable {
   var largeBlob: AuthenticationExtensionsLargeBlobInputs?
+  var prf: AuthenticationExtensionsPRFInputs?
 }
 
-// ! There is only one webauthn extension currently supported on iOS as of iOS 17.0:
-// - largeBlob extension: https://w3c.github.io/webauthn/#sctn-large-blob-extension
+// ! WebAuthn extensions currently supported on iOS:
+// - largeBlob extension: https://w3c.github.io/webauthn/#sctn-large-blob-extension (iOS 17.0+)
+// - prf extension: https://w3c.github.io/webauthn/#sctn-prf-extension (Custom implementation)
 
 internal struct AuthenticationExtensionsClientOutputs {
   
@@ -377,5 +460,17 @@ internal struct AuthenticationExtensionsClientOutputs {
     let  written: Bool?;
   }
   
+  /**
+  Specification reference: https://w3c.github.io/webauthn/#dictdef-authenticationextensionsprfoutputs
+   */
+  internal struct AuthenticationExtensionsPRFOutputs {
+    // - true if the PRF extension was used
+    let enabled: Bool?
+    
+    // - The PRF results
+    let results: AuthenticationExtensionsPRFValues?
+  }
+  
   let largeBlob: AuthenticationExtensionsLargeBlobOutputs?
+  let prf: AuthenticationExtensionsPRFOutputs?
 }

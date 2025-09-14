@@ -1,0 +1,39 @@
+{
+  "challenge": "nhkQXfE59Jb97VyyNJkvDiXucMEvltduvcrDmGrODHY",
+  "rp": {
+    "name": "Passkey Test with PRF",
+    "id": "aijs.top"
+  },
+  "user": {
+    "id": "2HzoHm_hY0CjuEESY9tY6-3SdjmNHOoNqaPDcZGzsr0",
+    "name": "Passkey Test",
+    "displayName": "Passkey Test"
+  },
+  "pubKeyCredParams": [
+    {
+      "type": "public-key",
+      "alg": -7
+    },
+    {
+      "type": "public-key",
+      "alg": -257
+    }
+  ],
+  "timeout": 1800000,
+  "attestation": "none",
+  "excludeCredentials": [],
+  "authenticatorSelection": {
+    "authenticatorAttachment": "platform",
+    "requireResidentKey": true,
+    "residentKey": "required",
+    "userVerification": "required"
+  },
+  "extensions": {
+    "prf": {
+      "eval": {
+        "first": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+        "second": [17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
+      }
+    }
+  }
+}

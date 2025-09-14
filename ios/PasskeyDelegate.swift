@@ -11,10 +11,12 @@ protocol RNPasskeyResultHandler {
 @available(iOS 15.0, *)
 class PasskeyDelegate: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
   private let _completionHandler: RNPasskeyResultHandler
+  private var _originalRequest: String? // Store original request for PRF processing
   
   // Initializes delegate with a completion handler (callback function)
-  init(completionHandler: RNPasskeyResultHandler) {
+  init(completionHandler: RNPasskeyResultHandler, originalRequest: String? = nil) {
     _completionHandler = completionHandler;
+    _originalRequest = originalRequest;
   }
   
   // Perform the authorization request for a given ASAuthorizationController instance
@@ -30,6 +32,42 @@ class PasskeyDelegate: NSObject, ASAuthorizationControllerDelegate, ASAuthorizat
       .connectedScenes
       .compactMap { ($0 as? UIWindowScene)?.keyWindow }
       .last ?? ASPresentationAnchor()
+  }
+  
+  // Helper method to process PRF extension
+  private func processPRFExtension(credentialId: Data) -> AuthenticationExtensionsPRFOutputsJSON? {
+    guard let originalRequest = _originalRequest,
+          let requestData = originalRequest.data(using: .utf8) else {
+      return nil
+    }
+    
+    do {
+      // Try to decode as creation request first
+      if let createRequest = try? JSONDecoder().decode(RNPasskeyCredentialCreationOptions.self, from: requestData) {
+        if let prfInputs = createRequest.extensions?.prf {
+          let prfOutput = PasskeyPRF.processPRFExtension(
+            credentialId: credentialId,
+            prfInputs: prfInputs
+          )
+          return prfOutput?.toJSON()
+        }
+      }
+      
+      // Try to decode as assertion request
+      if let getRequest = try? JSONDecoder().decode(RNPasskeyCredentialRequestOptions.self, from: requestData) {
+        if let prfInputs = getRequest.extensions?.prf {
+          let prfOutput = PasskeyPRF.processPRFExtension(
+            credentialId: credentialId,
+            prfInputs: prfInputs
+          )
+          return prfOutput?.toJSON()
+        }
+      }
+    } catch {
+      print("Error processing PRF extension: \(error)")
+    }
+    
+    return nil
   }
   
   func authorizationController(
@@ -72,8 +110,11 @@ class PasskeyDelegate: NSObject, ASAuthorizationControllerDelegate, ASAuthorizat
         );
       }
     }
+    
+    // Process PRF extension - this is a custom implementation since iOS doesn't have native PRF support
+    let prfOutput = processPRFExtension(credentialId: credential.credentialID);
       
-    let clientExtensionResults = (largeBlob != nil) ? AuthenticationExtensionsClientOutputsJSON(largeBlob: largeBlob) : nil;
+    let clientExtensionResults = AuthenticationExtensionsClientOutputsJSON(largeBlob: largeBlob, prf: prfOutput);
     
     let response =  AuthenticatorAttestationResponseJSON(
       clientDataJSON: credential.rawClientDataJSON.toBase64URLEncodedString(),
@@ -106,6 +147,11 @@ class PasskeyDelegate: NSObject, ASAuthorizationControllerDelegate, ASAuthorizat
         }
       }
     }
+    
+    // Process PRF extension - this is a custom implementation since iOS doesn't have native PRF support
+    let prfOutput = processPRFExtension(credentialId: credential.credentialID);
+    
+    let clientExtensionResults = AuthenticationExtensionsClientOutputsJSON(largeBlob: nil, prf: prfOutput);
      
     let response =  AuthenticatorAttestationResponseJSON(
       clientDataJSON: credential.rawClientDataJSON.toBase64URLEncodedString(),
@@ -116,7 +162,8 @@ class PasskeyDelegate: NSObject, ASAuthorizationControllerDelegate, ASAuthorizat
     let createResponse = RNPasskeyCreateResponseJSON(
       id: credential.credentialID.toBase64URLEncodedString(),
       rawId: credential.credentialID.toBase64URLEncodedString(),
-      response: response
+      response: response,
+      clientExtensionResults: clientExtensionResults
     );
     
     _completionHandler.onSuccess(.create(createResponse));
@@ -136,7 +183,10 @@ class PasskeyDelegate: NSObject, ASAuthorizationControllerDelegate, ASAuthorizat
         }
     }
     
-    let clientExtensionResults = AuthenticationExtensionsClientOutputsJSON(largeBlob: largeBlob);
+    // Process PRF extension - this is a custom implementation since iOS doesn't have native PRF support
+    let prfOutput = processPRFExtension(credentialId: credential.credentialID);
+    
+    let clientExtensionResults = AuthenticationExtensionsClientOutputsJSON(largeBlob: largeBlob, prf: prfOutput);
     let userHandle: String? = credential.userID.flatMap { String(data: $0, encoding: .utf8) };
 
     let response = AuthenticatorAssertionResponseJSON(
@@ -159,6 +209,11 @@ class PasskeyDelegate: NSObject, ASAuthorizationControllerDelegate, ASAuthorizat
   func handleSecurityKeyPublicKeyAssertionResponse(credential: ASAuthorizationSecurityKeyPublicKeyCredentialAssertion) -> Void {
     let userHandle: String? = credential.userID.flatMap { String(data: $0, encoding: .utf8) };
     
+    // Process PRF extension - this is a custom implementation since iOS doesn't have native PRF support
+    let prfOutput = processPRFExtension(credentialId: credential.credentialID);
+    
+    let clientExtensionResults = AuthenticationExtensionsClientOutputsJSON(largeBlob: nil, prf: prfOutput);
+    
     let response =  AuthenticatorAssertionResponseJSON(
       authenticatorData: credential.rawAuthenticatorData.toBase64URLEncodedString(),
       clientDataJSON: credential.rawClientDataJSON.toBase64URLEncodedString(),
@@ -169,7 +224,8 @@ class PasskeyDelegate: NSObject, ASAuthorizationControllerDelegate, ASAuthorizat
     let getResponse = RNPasskeyGetResponseJSON(
       id: credential.credentialID.toBase64URLEncodedString(),
       rawId: credential.credentialID.toBase64URLEncodedString(),
-      response: response
+      response: response,
+      clientExtensionResults: clientExtensionResults
     );
     
     _completionHandler.onSuccess(.get(getResponse));

@@ -5,6 +5,7 @@ import type {
   PasskeyCreateResult,
   PasskeyGetRequest,
   PasskeyGetResult,
+  AuthenticationExtensionsPRFValues,
 } from './PasskeyTypes';
 
 export {
@@ -14,4 +15,5 @@ export {
   PasskeyCreateResult,
   PasskeyGetRequest,
   PasskeyGetResult,
+  AuthenticationExtensionsPRFValues,
 };
