@@ -3,5 +3,5 @@
   "allowCredentials": [],
   "timeout": 1800000,
   "userVerification": "required",
-  "rpId": "top.aijs"
+  "rpId": "aijs.top"
 }

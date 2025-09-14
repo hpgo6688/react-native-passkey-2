@@ -3,14 +3,17 @@ import * as React from 'react';
 import { StyleSheet, View, Button, TextInput, Alert } from 'react-native';
 import { Passkey } from 'react-native-passkey';
 
-import RegRequest from '../../src/__tests__/testData/RegRequest.json';
-import AuthRequest from '../../src/__tests__/testData/AuthRequest.json';
+import RegRequest from './testData/RegRequest.json';
+import AuthRequest from './testData/AuthRequest.json';
 
 export default function App() {
-  const [email, setEmail] = React.useState('');
+  const [email, setEmail] = React.useState('h92022566881@gmail.com');
 
   async function createAccount() {
     try {
+      console.log('Starting Passkey registration...');
+      console.log('Request data:', RegRequest);
+      
       const requestJson = {
         // ...Retrieve request from server
         ...RegRequest,
@@ -19,13 +22,18 @@ export default function App() {
       const result = await Passkey.create(requestJson);
 
       console.log('Registration result: ', result);
+      Alert.alert('Success', 'Passkey registration completed!');
     } catch (e) {
-      console.log(e);
+      console.log('Registration error:', e);
+      Alert.alert('Error', `Registration failed: ${e.message || e}`);
     }
   }
 
   async function authenticateAccount() {
     try {
+      console.log('Starting Passkey authentication...');
+      console.log('Request data:', AuthRequest);
+      
       const requestJson = {
         // ...Retrieve request from server
         ...AuthRequest,
@@ -34,8 +42,10 @@ export default function App() {
       const result = await Passkey.get(requestJson);
 
       console.log('Authentication result: ', result);
+      Alert.alert('Success', 'Passkey authentication completed!');
     } catch (e) {
-      console.log(e);
+      console.log('Authentication error:', e);
+      Alert.alert('Error', `Authentication failed: ${e.message || e}`);
     }
   }
 
