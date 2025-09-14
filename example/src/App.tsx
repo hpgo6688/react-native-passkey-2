@@ -1,6 +1,6 @@
 import * as React from 'react';
 
-import { StyleSheet, View, Button, TextInput, Alert } from 'react-native';
+import { StyleSheet, View, Button, TextInput, Alert, SafeAreaView } from 'react-native';
 import { Passkey } from 'react-native-passkey';
 
 import RegRequest from './testData/RegRequest.json';
@@ -8,10 +8,18 @@ import AuthRequest from './testData/AuthRequest.json';
 import RegRequestWithPRF from './testData/RegRequestWithPRF.json';
 import AuthRequestWithPRF from './testData/AuthRequestWithPRF.json';
 import CryptoDemo from './CryptoDemo';
+import PRFImplementationInfo from './PRFImplementationInfo';
+import IOS18PRFDemo from './iOS18PRFDemo';
+import AdvancedPRFDemo from './AdvancedPRFDemo';
+import PRFTestDemo from './PRFTestDemo';
 
 export default function App() {
-  const [email, setEmail] = React.useState('h92022566882@gmail.com');
+  const [email, setEmail] = React.useState('h92022566883@gmail.com');
   const [showCryptoDemo, setShowCryptoDemo] = React.useState(false);
+  const [showPRFInfo, setShowPRFInfo] = React.useState(false);
+  const [showiOS18Demo, setShowiOS18Demo] = React.useState(false);
+  const [showAdvancedDemo, setShowAdvancedDemo] = React.useState(false);
+  const [showPRFTest, setShowPRFTest] = React.useState(false);
 
   async function createAccount() {
     try {
@@ -161,20 +169,92 @@ export default function App() {
     );
   }
 
+  if (showPRFInfo) {
+    return (
+      <View style={styles.container}>
+        <Button 
+          title="← 返回主菜单" 
+          onPress={() => setShowPRFInfo(false)}
+          color="#666"
+        />
+        <PRFImplementationInfo />
+      </View>
+    );
+  }
+
+  if (showiOS18Demo) {
+    return (
+      <View style={styles.container}>
+        <Button 
+          title="← 返回主菜单" 
+          onPress={() => setShowiOS18Demo(false)}
+          color="#666"
+        />
+        <IOS18PRFDemo />
+      </View>
+    );
+  }
+
+  if (showAdvancedDemo) {
+    return (
+      <View style={styles.container}>
+        <Button 
+          title="← 返回主菜单" 
+          onPress={() => setShowAdvancedDemo(false)}
+          color="#666"
+        />
+        <AdvancedPRFDemo />
+      </View>
+    );
+  }
+
+  if (showPRFTest) {
+    return (
+      <View style={styles.container}>
+        <Button 
+          title="← 返回主菜单" 
+          onPress={() => setShowPRFTest(false)}
+          color="#666"
+        />
+        <PRFTestDemo />
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.container}>
-      <TextInput placeholder="email" value={email} onChangeText={setEmail} />
-      <Button title="Create Account" onPress={createAccount} />
-      <Button title="Authenticate" onPress={authenticateAccount} />
-      <Button title="Create Account with PRF" onPress={createAccountWithPRF} />
-      <Button title="Authenticate with PRF" onPress={authenticateAccountWithPRF} />
-      <Button title="isSupported?" onPress={isSupported} />
-      <Button 
-        title="PRF 加解密 Demo" 
-        onPress={() => setShowCryptoDemo(true)}
-        color="#4CAF50"
-      />
-    </View>
+      <View style={styles.container}>
+        <TextInput placeholder="email" value={email} onChangeText={setEmail} />
+        <Button title="Create Account" onPress={createAccount} />
+        <Button title="Authenticate" onPress={authenticateAccount} />
+        <Button title="Create Account with PRF" onPress={createAccountWithPRF} />
+        <Button title="Authenticate with PRF" onPress={authenticateAccountWithPRF} />
+        <Button title="isSupported?" onPress={isSupported} />
+        <Button 
+          title="PRF 加解密 Demo" 
+          onPress={() => setShowCryptoDemo(true)}
+          color="#4CAF50"
+        />
+        <Button 
+          title="PRF Implementation Info" 
+          onPress={() => setShowPRFInfo(true)}
+          color="#2196F3"
+        />
+        <Button 
+          title="iOS 18.5 PRF Demo" 
+          onPress={() => setShowiOS18Demo(true)}
+          color="#FF9800"
+        />
+        <Button 
+          title="Advanced PRF Demo" 
+          onPress={() => setShowAdvancedDemo(true)}
+          color="#9C27B0"
+        />
+        <Button 
+          title="🧪 PRF 功能测试" 
+          onPress={() => setShowPRFTest(true)}
+          color="#E91E63"
+        />
+      </View>
   );
 }
 
@@ -182,7 +262,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'space-evenly',
+    // justifyContent: 'space-evenly',
+    paddingTop: 80,
+    gap: 10
   },
   box: {
     width: 60,

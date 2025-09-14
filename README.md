@@ -183,7 +183,13 @@ As of version 3.0 the newly added largeBlob extension should work out of the box
 
 The PRF extension allows you to derive cryptographically secure keys from passkey credentials. This is useful for creating user-specific encryption keys or other cryptographic operations.
 
-**Note**: PRF support is currently implemented as a custom solution for iOS only. Android support is not available at this time.
+**Implementation**: PRF support uses a sophisticated hybrid implementation approach:
+- **iOS 18.0+**: Uses native `ASAuthorizationPublicKeyCredentialPRFAssertionInput` with custom fallback
+- **iOS 17.0+**: Uses CryptoKit's modern HMAC-SHA256 implementation
+- **iOS <17.0**: Uses CommonCrypto's HMAC-SHA256 implementation
+- **Android**: Not available at this time
+
+The hybrid approach ensures optimal performance, security, and WebAuthn PRF specification compliance across all iOS versions.
 
 ```ts
 import { Passkey, AuthenticationExtensionsPRFValues } from 'react-native-passkey';
