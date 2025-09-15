@@ -115,13 +115,18 @@ internal class PasskeyPRF {
         prfInputs: Any?
     ) -> [String: Any]? {
         
+        print("PasskeyPRF: processPRFExtension called with prfInputs = \(prfInputs != nil ? "found" : "nil")")
+        
         guard let prfInputs = prfInputs else {
+            print("PasskeyPRF: prfInputs is nil, returning nil")
             return nil
         }
         
         if #available(iOS 18.0, *) {
+            print("PasskeyPRF: Using iOS 18.0+ native implementation")
             return processPRFExtensionNative(credentialId: credentialId, prfInputs: prfInputs)
         } else {
+            print("PasskeyPRF: Using custom implementation for iOS < 18.0")
             return processPRFExtensionCustom(credentialId: credentialId, prfInputs: prfInputs)
         }
     }
@@ -138,18 +143,26 @@ internal class PasskeyPRF {
         print("PasskeyPRF: Using native iOS 18.0+ PRF implementation")
         
         // 尝试解析 PRF 输入
-        guard let prfDict = prfInputs as? [String: Any],
-              let evalDict = prfDict["eval"] as? [String: Any],
-              let firstSaltArray = evalDict["first"] as? [Int] else {
+        print("PasskeyPRF: prfInputs type = \(type(of: prfInputs))")
+        print("PasskeyPRF: prfInputs = \(prfInputs)")
+        
+        // 处理 AuthenticationExtensionsPRFInputs 类型
+        guard let prfInputsTyped = prfInputs as? AuthenticationExtensionsPRFInputs else {
+            print("PasskeyPRF: Failed to cast prfInputs to AuthenticationExtensionsPRFInputs")
             return ["enabled": false]
         }
         
-        let firstSalt = Data(firstSaltArray.map { UInt8($0) })
-        var secondSalt: Data?
-        
-        if let secondSaltArray = evalDict["second"] as? [Int] {
-            secondSalt = Data(secondSaltArray.map { UInt8($0) })
+        guard let evalValues = prfInputsTyped.eval else {
+            print("PasskeyPRF: No eval values found in prfInputs")
+            return ["enabled": false]
         }
+        
+        print("PasskeyPRF: evalValues = \(evalValues)")
+        
+        let firstSalt = evalValues.first
+        let secondSalt = evalValues.second
+        
+        print("PasskeyPRF: firstSalt = \(firstSalt.count) bytes, secondSalt = \(secondSalt?.count ?? 0) bytes")
         
         // 检查是否真的支持原生 PRF API
         if #available(iOS 18.0, *) {

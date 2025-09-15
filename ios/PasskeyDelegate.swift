@@ -36,24 +36,41 @@ class PasskeyDelegate: NSObject, ASAuthorizationControllerDelegate, ASAuthorizat
   
   // Helper method to convert [String: Any] to AuthenticationExtensionsPRFOutputsJSON
   private func convertToPRFOutputsJSON(_ prfOutput: [String: Any]?) -> AuthenticationExtensionsPRFOutputsJSON? {
-    guard let prfOutput = prfOutput else { return nil }
+    guard let prfOutput = prfOutput else { 
+      print("PRF Convert: prfOutput is nil")
+      return nil 
+    }
+    
+    print("PRF Convert: prfOutput = \(prfOutput)")
     
     let enabled = prfOutput["enabled"] as? Bool
+    print("PRF Convert: enabled = \(enabled ?? false)")
+    
     var results: AuthenticationExtensionsPRFValuesJSON?
     
     if let resultsDict = prfOutput["results"] as? [String: Any] {
+      print("PRF Convert: resultsDict = \(resultsDict)")
       let first = resultsDict["first"] as? [UInt8] ?? []
       let second = resultsDict["second"] as? [UInt8]
+      print("PRF Convert: first = \(first.count) bytes, second = \(second?.count ?? 0) bytes")
       results = AuthenticationExtensionsPRFValuesJSON(first: first, second: second)
+    } else {
+      print("PRF Convert: no results dict found")
     }
     
-    return AuthenticationExtensionsPRFOutputsJSON(enabled: enabled, results: results)
+    let finalResult = AuthenticationExtensionsPRFOutputsJSON(enabled: enabled, results: results)
+    print("PRF Convert: final result = \(finalResult != nil ? "created" : "nil")")
+    return finalResult
   }
   
   // Helper method to process PRF extension using hybrid implementation
   private func processPRFExtension(credentialId: Data) -> AuthenticationExtensionsPRFOutputsJSON? {
+    print("PRF Debug: processPRFExtension called for registration")
+    print("PRF Debug: _originalRequest = \(_originalRequest ?? "nil")")
+    
     guard let originalRequest = _originalRequest,
           let requestData = originalRequest.data(using: .utf8) else {
+      print("PRF Debug: No original request or request data")
       return nil
     }
     
@@ -189,6 +206,8 @@ class PasskeyDelegate: NSObject, ASAuthorizationControllerDelegate, ASAuthorizat
   }
   
   func handlePlatformPublicKeyAssertionResponse(credential: ASAuthorizationPlatformPublicKeyCredentialAssertion) -> Void {
+    print("PRF Debug: handlePlatformPublicKeyAssertionResponse called")
+    
     var largeBlob: AuthenticationExtensionsLargeBlobOutputsJSON? = AuthenticationExtensionsLargeBlobOutputsJSON()
     if #available(iOS 17.0, *), let result = credential.largeBlob?.result {
         switch (result) {
@@ -202,8 +221,38 @@ class PasskeyDelegate: NSObject, ASAuthorizationControllerDelegate, ASAuthorizat
         }
     }
     
-    // Process PRF extension - uses hybrid implementation (native iOS 17.0+ or custom fallback)
-    let prfOutput = processPRFExtension(credentialId: credential.credentialID);
+    // Process PRF extension:
+    // Prefer native (iOS 18+) outputs if available, otherwise fallback to custom implementation
+    var prfOutput: AuthenticationExtensionsPRFOutputsJSON? = nil
+    if #available(iOS 18.0, *) {
+      // Best-effort native read via selector (avoid KVC crash if key missing)
+      let sel = NSSelectorFromString("prfOutputs")
+      if (credential as AnyObject).responds(to: sel),
+         let unmanaged = (credential as AnyObject).perform(sel),
+         let dict = unmanaged.takeUnretainedValue() as? [AnyHashable: Any] {
+        if let firstValue = dict.values.first as? [String: Any] {
+          let first = (firstValue["first"] as? Data)?.uInt8Array ?? []
+          let second = (firstValue["second"] as? Data)?.uInt8Array
+          prfOutput = AuthenticationExtensionsPRFOutputsJSON(enabled: true, results: AuthenticationExtensionsPRFValuesJSON(first: first, second: second))
+          print("PRF (Native): Using native PRF outputs from assertion")
+        }
+      } else {
+        print("PRF (Native): 'prfOutputs' selector not available on credential; falling back")
+      }
+    }
+    if prfOutput == nil {
+      print("PRF (Custom): Native outputs unavailable, using custom fallback")
+      // 需要从原始请求中获取 PRF 输入
+      print("PRF Debug: _originalRequest = \(_originalRequest ?? "nil")")
+      let prfInputs = _originalRequest?.data(using: .utf8).flatMap { 
+        try? JSONDecoder().decode(RNPasskeyCredentialRequestOptions.self, from: $0).extensions?.prf 
+      }
+      print("PRF Debug: prfInputs = \(prfInputs != nil ? "found" : "nil")")
+      let customResult = PasskeyPRF.processPRFExtension(credentialId: credential.credentialID, prfInputs: prfInputs)
+      print("PRF Debug: customResult = \(customResult != nil ? "found" : "nil")")
+      prfOutput = convertToPRFOutputsJSON(customResult)
+      print("PRF Debug: final prfOutput = \(prfOutput != nil ? "found" : "nil")")
+    }
     
     let clientExtensionResults = AuthenticationExtensionsClientOutputsJSON(largeBlob: largeBlob, prf: prfOutput);
     let userHandle: String? = credential.userID.flatMap { String(data: $0, encoding: .utf8) };
@@ -228,7 +277,7 @@ class PasskeyDelegate: NSObject, ASAuthorizationControllerDelegate, ASAuthorizat
   func handleSecurityKeyPublicKeyAssertionResponse(credential: ASAuthorizationSecurityKeyPublicKeyCredentialAssertion) -> Void {
     let userHandle: String? = credential.userID.flatMap { String(data: $0, encoding: .utf8) };
     
-    // Process PRF extension - uses hybrid implementation (native iOS 17.0+ or custom fallback)
+    // Process PRF extension - native not expected on security key, fallback to custom
     let prfOutput = processPRFExtension(credentialId: credential.credentialID);
     
     let clientExtensionResults = AuthenticationExtensionsClientOutputsJSON(largeBlob: nil, prf: prfOutput);

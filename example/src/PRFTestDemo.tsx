@@ -2,11 +2,130 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, Alert, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Passkey } from 'react-native-passkey';
 
+// 简单的加/解密工具（演示用，与 CryptoDemo.tsx 一致思路）
+class SimpleCrypto {
+  static stringToBytes(str: string): number[] {
+    // React Native 兼容的 UTF-8 编码
+    const bytes: number[] = [];
+    for (let i = 0; i < str.length; i++) {
+      const code = str.charCodeAt(i);
+      if (code < 0x80) {
+        // ASCII 字符 (0-127)
+        bytes.push(code);
+      } else if (code < 0x800) {
+        // 2 字节 UTF-8
+        bytes.push(0xC0 | (code >> 6));
+        bytes.push(0x80 | (code & 0x3F));
+      } else if (code < 0xD800 || code >= 0xE000) {
+        // 3 字节 UTF-8
+        bytes.push(0xE0 | (code >> 12));
+        bytes.push(0x80 | ((code >> 6) & 0x3F));
+        bytes.push(0x80 | (code & 0x3F));
+      } else {
+        // 代理对 (4 字节 UTF-8)
+        i++;
+        const nextCode = str.charCodeAt(i);
+        const fullCode = 0x10000 + (((code & 0x3FF) << 10) | (nextCode & 0x3FF));
+        bytes.push(0xF0 | (fullCode >> 18));
+        bytes.push(0x80 | ((fullCode >> 12) & 0x3F));
+        bytes.push(0x80 | ((fullCode >> 6) & 0x3F));
+        bytes.push(0x80 | (fullCode & 0x3F));
+      }
+    }
+    console.log('📝 stringToBytes 输入:', str);
+    console.log('📝 stringToBytes 输出:', bytes);
+    return bytes;
+  }
+
+  static bytesToString(bytes: number[]): string {
+    // React Native 兼容的 UTF-8 解码
+    let result = '';
+    let i = 0;
+    while (i < bytes.length) {
+      let code = bytes[i++];
+      if (code < 0x80) {
+        // ASCII 字符
+        result += String.fromCharCode(code);
+      } else if ((code >> 5) === 0x06) {
+        // 2 字节 UTF-8
+        const byte2 = bytes[i++];
+        code = ((code & 0x1F) << 6) | (byte2 & 0x3F);
+        result += String.fromCharCode(code);
+      } else if ((code >> 4) === 0x0E) {
+        // 3 字节 UTF-8
+        const byte2 = bytes[i++];
+        const byte3 = bytes[i++];
+        code = ((code & 0x0F) << 12) | ((byte2 & 0x3F) << 6) | (byte3 & 0x3F);
+        result += String.fromCharCode(code);
+      } else if ((code >> 3) === 0x1E) {
+        // 4 字节 UTF-8
+        const byte2 = bytes[i++];
+        const byte3 = bytes[i++];
+        const byte4 = bytes[i++];
+        code = ((code & 0x07) << 18) | ((byte2 & 0x3F) << 12) | ((byte3 & 0x3F) << 6) | (byte4 & 0x3F);
+        code -= 0x10000;
+        result += String.fromCharCode(0xD800 + (code >> 10));
+        result += String.fromCharCode(0xDC00 + (code & 0x3FF));
+      }
+    }
+    console.log('📝 bytesToString 输入:', bytes);
+    console.log('📝 bytesToString 输出:', result);
+    return result;
+  }
+
+  static bytesToHex(bytes: number[]): string {
+    return bytes.map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  static hexToBytes(hex: string): number[] {
+    const out: number[] = [];
+    for (let i = 0; i < hex.length; i += 2) {
+      out.push(parseInt(hex.substring(i, i + 2), 16));
+    }
+    return out;
+  }
+
+  // 简单 XOR（仅演示）
+  static xorEncrypt(plain: string, key: number[]): string {
+    const textBytes = this.stringToBytes(plain);
+    const enc: number[] = [];
+    for (let i = 0; i < textBytes.length; i++) {
+      enc.push(textBytes[i] ^ key[i % key.length]);
+    }
+    return this.bytesToHex(enc);
+  }
+
+  static xorDecrypt(cipherHex: string, key: number[]): string {
+    const enc = this.hexToBytes(cipherHex);
+    const dec: number[] = [];
+    for (let i = 0; i < enc.length; i++) {
+      dec.push(enc[i] ^ key[i % key.length]);
+    }
+    return this.bytesToString(dec);
+  }
+
+  // 用 PRF 结果派生一个 32 字节的对称 key（演示）
+  static generateKeyFromPRF(prfFirst: number[], salt: string = 'demo-salt'): number[] {
+    const saltBytes = this.stringToBytes(salt);
+    const key: number[] = [];
+    for (let i = 0; i < 32; i++) {
+      key.push(prfFirst[i % prfFirst.length] ^ saltBytes[i % saltBytes.length]);
+    }
+    return key;
+  }
+}
+
 interface PRFTestDemoProps {}
 
 export default function PRFTestDemo({}: PRFTestDemoProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [testResults, setTestResults] = useState<string>('');
+  // 加解密演示相关
+  const [plainText, setPlainText] = useState<string>('Hello, PRF! 这是需要加密的内容。');
+  const [encryptedText, setEncryptedText] = useState<string>('');
+  const [decryptedText, setDecryptedText] = useState<string>('');
+  const [prfKey, setPrfKey] = useState<number[] | null>(null);
+  const [lastPRFFirst, setLastPRFFirst] = useState<number[] | null>(null);
 
   const generateRandomSalt = (length: number = 32): number[] => {
     const salt = new Uint8Array(length);
@@ -84,18 +203,25 @@ export default function PRFTestDemo({}: PRFTestDemoProps) {
 
       const result = await Passkey.create(registrationOptions);
       
+      console.log('😂Registration result:', result);
+      
       setTestResults(prev => prev + '✅ Passkey 创建成功!\n');
       setTestResults(prev => prev + `Credential ID: ${result.id}\n`);
       
-      if (result.extensions?.clientExtensionResults?.prf) {
+      if (result.clientExtensionResults?.prf) {
         setTestResults(prev => prev + '✅ PRF 扩展处理成功!\n');
-        setTestResults(prev => prev + `PRF Enabled: ${result.extensions?.clientExtensionResults?.prf.enabled}\n`);
+        setTestResults(prev => prev + `PRF Enabled: ${result.clientExtensionResults?.prf.enabled}\n`);
         
-        if (result.extensions?.clientExtensionResults?.prf.results) {
-          setTestResults(prev => prev + `PRF First Result: ${result.extensions?.clientExtensionResults?.prf.results?.first?.slice(0, 8).join(',')}...\n`);
-          if (result.extensions?.clientExtensionResults?.prf.results?.second) {
-            setTestResults(prev => prev + `PRF Second Result: ${result.extensions?.clientExtensionResults?.prf.results?.second?.slice(0, 8).join(',')}...\n`);
+        if (result.clientExtensionResults?.prf.results) {
+          const firstArr = result.clientExtensionResults?.prf.results?.first ?? [];
+          console.log('Setting lastPRFFirst from registration:', firstArr.length, firstArr.slice(0, 4));
+          setLastPRFFirst(firstArr);
+          setTestResults(prev => prev + `PRF First Result: ${firstArr.slice(0, 8).join(',')}...\n`);
+          if (result.clientExtensionResults?.prf.results?.second) {
+            setTestResults(prev => prev + `PRF Second Result: ${result.clientExtensionResults?.prf.results?.second?.slice(0, 8).join(',')}...\n`);
           }
+        } else {
+          console.log('No PRF results in registration response');
         }
       } else {
         setTestResults(prev => prev + '⚠️ PRF 扩展未返回结果\n');
@@ -139,7 +265,7 @@ export default function PRFTestDemo({}: PRFTestDemoProps) {
       setTestResults(prev => prev + '正在进行 Passkey 认证...\n');
 
       const result = await Passkey.get(authenticationOptions);
-      
+      console.log("😂result", result)
       setTestResults(prev => prev + '✅ Passkey 认证成功!\n');
       setTestResults(prev => prev + `Credential ID: ${result.id}\n`);
       
@@ -148,10 +274,15 @@ export default function PRFTestDemo({}: PRFTestDemoProps) {
         setTestResults(prev => prev + `PRF Enabled: ${result.clientExtensionResults?.prf.enabled}\n`);
         
         if (result.clientExtensionResults?.prf.results) {
-          setTestResults(prev => prev + `PRF First Result: ${result.clientExtensionResults?.prf.results?.first?.slice(0, 8).join(',')}...\n`);
+          const firstArr = result.clientExtensionResults?.prf.results?.first ?? [];
+          console.log('Setting lastPRFFirst from authentication:', firstArr.length, firstArr.slice(0, 4));
+          setLastPRFFirst(firstArr);
+          setTestResults(prev => prev + `PRF First Result: ${firstArr.slice(0, 8).join(',')}...\n`);
           if (result.clientExtensionResults?.prf.results?.second) {
             setTestResults(prev => prev + `PRF Second Result: ${result.clientExtensionResults?.prf.results?.second?.slice(0, 8).join(',')}...\n`);
           }
+        } else {
+          console.log('No PRF results in authentication response');
         }
       } else {
         setTestResults(prev => prev + '⚠️ PRF 扩展未返回结果\n');
@@ -167,6 +298,78 @@ export default function PRFTestDemo({}: PRFTestDemoProps) {
 
   const clearResults = () => {
     setTestResults('');
+    setPlainText('');
+    setEncryptedText('');
+    setDecryptedText('');
+    setPrfKey(null);
+    setLastPRFFirst(null);
+  };
+
+  // 基于最近一次 PRF 的 first 结果派生密钥
+  const ensurePRFKey = async (): Promise<number[]> => {
+    if (prfKey) return prfKey;
+    if (!lastPRFFirst || lastPRFFirst.length === 0) {
+      throw new Error('当前没有可用的 PRF 结果，请先完成一次注册或认证（带 PRF 扩展）');
+    }
+    const key = SimpleCrypto.generateKeyFromPRF(lastPRFFirst, 'demo-salt');
+    setPrfKey(key);
+    return key;
+  };
+
+  const encryptWithPRF = async () => {
+    try {
+      if (!plainText.trim()) {
+        setTestResults(prev => prev + '⚠️ 请输入要加密的文本\n');
+        return;
+      }
+      setIsLoading(true);
+      const key = await ensurePRFKey();
+      
+      console.log('🔐 加密前原文:', plainText);
+      console.log('🔐 原文长度:', plainText.length);
+      console.log('🔐 原文字符码:', Array.from(plainText).map(c => c.charCodeAt(0)));
+      console.log('🔐 PRF Key:', key.slice(0, 8), '...');
+      
+      const cipher = SimpleCrypto.xorEncrypt(plainText, key);
+      
+      console.log('🔐 加密后密文:', cipher);
+      console.log('🔐 密文长度:', cipher.length);
+      
+      setEncryptedText(cipher);
+      setTestResults(prev => prev + '🔐 已使用 PRF Key 完成加密\n');
+    } catch (e: any) {
+      setTestResults(prev => prev + `❌ 加密失败: ${e.message || e}\n`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const decryptWithPRF = async () => {
+    try {
+      if (!encryptedText.trim()) {
+        setTestResults(prev => prev + '⚠️ 请先完成加密\n');
+        return;
+      }
+      setIsLoading(true);
+      const key = await ensurePRFKey();
+      
+      console.log('🔓 解密前密文:', encryptedText);
+      console.log('🔓 密文长度:', encryptedText.length);
+      console.log('🔓 PRF Key:', key.slice(0, 8), '...');
+      
+      const plain = SimpleCrypto.xorDecrypt(encryptedText, key);
+      
+      console.log('🔓 解密后原文:', plain);
+      console.log('🔓 原文长度:', plain.length);
+      console.log('🔓 原文字符码:', Array.from(plain).map(c => c.charCodeAt(0)));
+      
+      setDecryptedText(plain);
+      setTestResults(prev => prev + '🔓 已使用 PRF Key 完成解密\n');
+    } catch (e: any) {
+      setTestResults(prev => prev + `❌ 解密失败: ${e.message || e}\n`);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const showPRFInfo = () => {
@@ -190,7 +393,11 @@ export default function PRFTestDemo({}: PRFTestDemoProps) {
       [{ text: '开始测试', style: 'default' }]
     );
   };
-
+const encryptDisable = isLoading || (!lastPRFFirst || lastPRFFirst.length === 0)
+console.log("isLoading", isLoading)
+console.log("lastPRFFirst", lastPRFFirst)
+console.log("lastPRFFirst.length", lastPRFFirst?.length)
+console.log("encryptDisable", encryptDisable)
   return (
     <ScrollView style={styles.container}>
       <Text style={styles.title}>PRF 功能测试</Text>
@@ -232,6 +439,45 @@ export default function PRFTestDemo({}: PRFTestDemoProps) {
         >
           <Text style={styles.buttonText}>清除结果</Text>
         </TouchableOpacity>
+      </View>
+
+      {/* PRF 加解密测试区（参考 CryptoDemo.tsx） */}
+      <View style={styles.infoCard}>
+        <Text style={styles.cardTitle}>🔐 基于 PRF 的加解密测试</Text>
+        <Text style={styles.cardDescription}>
+          先通过上方按钮完成一次注册或认证拿到 PRF 结果，然后在此处使用 PRF 派生的密钥进行文本加解密。
+        </Text>
+      </View>
+
+      <View style={styles.buttonContainer}>
+        <Text style={{ fontWeight: 'bold', marginBottom: 8 }}>1) 输入要加密的文本</Text>
+        <View style={{ borderWidth: 1, borderColor: '#ddd', borderRadius: 8, marginBottom: 10 }}>
+          <Text style={{ padding: 10 }}>{plainText}</Text>
+        </View>
+        <TouchableOpacity 
+          style={[styles.button, styles.primaryButton]}
+          onPress={encryptWithPRF} 
+          disabled={encryptDisable}
+        >
+          <Text style={styles.buttonText}>使用 PRF Key 加密 {encryptDisable + ""}</Text>
+        </TouchableOpacity>
+
+        <Text style={{ fontWeight: 'bold', marginVertical: 8 }}>2) 加密结果</Text>
+        <View style={{ borderWidth: 1, borderColor: '#ddd', borderRadius: 8, marginBottom: 10 }}>
+          <Text style={{ padding: 10 }}>{encryptedText || '(空)'}</Text>
+        </View>
+        <TouchableOpacity 
+          style={[styles.button, styles.secondaryButton]}
+          onPress={decryptWithPRF}
+          disabled={isLoading || !encryptedText}
+        >
+          <Text style={styles.buttonText}>使用 PRF Key 解密</Text>
+        </TouchableOpacity>
+
+        <Text style={{ fontWeight: 'bold', marginVertical: 8 }}>3) 解密结果</Text>
+        <View style={{ borderWidth: 1, borderColor: '#ddd', borderRadius: 8, marginBottom: 10 }}>
+          <Text style={{ padding: 10 }}>{decryptedText || '(空)'}</Text>
+        </View>
       </View>
 
       {isLoading && (
