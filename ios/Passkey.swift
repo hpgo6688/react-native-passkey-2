@@ -48,7 +48,7 @@ class Passkey: NSObject, RNPasskeyResultHandler {
       // Get authorization controller
       let authController: ASAuthorizationController = self.configureAuthController(forcePlatformKey: forcePlatformKey, forceSecurityKey: forceSecurityKey, platformKeyRequest: platformKeyRequest, securityKeyRequest: securityKeyRequest);
 
-      let passkeyDelegate = PasskeyDelegate(completionHandler: self);
+      let passkeyDelegate = PasskeyDelegate(completionHandler: self, originalRequest: request);
       
       // Keep a reference to the delegate object
       self.passkeyDelegate = passkeyDelegate;
@@ -85,7 +85,7 @@ class Passkey: NSObject, RNPasskeyResultHandler {
       // Get authorization controller
       let authController: ASAuthorizationController = self.configureAuthController(forcePlatformKey: forcePlatformKey, forceSecurityKey: forceSecurityKey, platformKeyRequest: platformKeyRequest, securityKeyRequest: securityKeyRequest);
       
-      let passkeyDelegate = PasskeyDelegate(completionHandler: self);
+      let passkeyDelegate = PasskeyDelegate(completionHandler: self, originalRequest: request);
       
       // Keep a reference to the delegate object
       self.passkeyDelegate = passkeyDelegate;
@@ -184,6 +184,90 @@ class Passkey: NSObject, RNPasskeyResultHandler {
       authRequest.userVerificationPreference = userVerificationPref.appleise()
     }
 
+    // iOS 18.0+: Attach native PRF inputs to registration request if available (best-effort, with graceful fallback)
+    if #available(iOS 18.0, *) {
+      if let prfInputs = request.extensions?.prf, let eval = prfInputs.eval {
+        // Attempt to configure native PRF using runtime (avoids compile errors on older SDKs)
+        // Prefer Registration input class; fallback to Assertion input class if API surface differs
+        let firstData: NSData = eval.first as NSData
+        let secondData: NSData? = eval.second as NSData?
+        var configured = false
+
+        // Try different possible class names for iOS 18.0+ PRF API
+        let possibleClassNames = [
+          "ASAuthorizationPublicKeyCredentialPRFRegistrationInput",
+          "ASAuthorizationPublicKeyCredentialPRFAssertionInput", 
+          "ASAuthorizationPublicKeyCredentialPRFRequest",
+          "ASAuthorizationPublicKeyCredentialPRFDescriptor"
+        ]
+        
+        for className in possibleClassNames {
+          print("Passkey (PRF): Trying class name: \(className)")
+          if let PRFClass = NSClassFromString(className) as? NSObject.Type {
+            print("Passkey (PRF): Found class: \(className)")
+            
+            // Try different initialization methods
+            let initMethods = [
+              "initWithInput:salt:",
+              "initWithFirst:second:",
+              "initWithInput:",
+              "initWithSalt:",
+              "initWithFirstParty:secondParty:",
+              "initWithDescriptor:"
+            ]
+            
+            for initMethod in initMethods {
+              if let prfAlloc = PRFClass.perform(NSSelectorFromString("alloc"))?.takeUnretainedValue() as? NSObject {
+                let initSel = NSSelectorFromString(initMethod)
+                if prfAlloc.responds(to: initSel) {
+                  print("Passkey (PRF): Found init method: \(initMethod)")
+                  
+                  // Try to initialize with different parameter combinations
+                  print("Passkey (PRF): Attempting to initialize with method: \(initMethod)")
+                  
+                  // Try different parameter combinations
+                  let parameterCombinations = [
+                    (firstData, secondData),
+                    (firstData, nil),
+                    (nil, secondData),
+                    (nil, nil)
+                  ]
+                  
+                  for (param1, param2) in parameterCombinations {
+                    do {
+                      let result: AnyObject?
+                      if param2 != nil {
+                        result = prfAlloc.perform(initSel, with: param1, with: param2)?.takeUnretainedValue()
+                      } else {
+                        result = prfAlloc.perform(initSel, with: param1)?.takeUnretainedValue()
+                      }
+                      
+                      if let prfInput = result {
+                        (authRequest as AnyObject).setValue(prfInput, forKey: "prf")
+                        configured = true
+                        print("Passkey (Native PRF): Successfully attached \(className) to platform create request with method \(initMethod)")
+                        break
+                      }
+                    } catch {
+                      print("Passkey (PRF): Failed to initialize with method \(initMethod): \(error)")
+                    }
+                  }
+                  
+                  if configured { break }
+                }
+              }
+            }
+            
+            if configured { break }
+          }
+        }
+
+        if !configured {
+          print("Passkey (PRF): Native PRF inputs class not found or property unavailable, using custom fallback")
+        }
+      }
+    }
+
     return authRequest;
   }
   
@@ -211,6 +295,41 @@ class Passkey: NSObject, RNPasskeyResultHandler {
     
     if let userVerificationPref = request.userVerification {
       authRequest.userVerificationPreference = userVerificationPref.appleise()
+    }
+
+    // iOS 18.0+: Attach native PRF inputs to assertion request if available (best-effort, with graceful fallback)
+    if #available(iOS 18.0, *) {
+      if let prfInputs = request.extensions?.prf, let eval = prfInputs.eval {
+        let firstData: NSData = eval.first as NSData
+        let secondData: NSData? = eval.second as NSData?
+        var configured = false
+
+        if let PRFAssertInputClass = NSClassFromString("ASAuthorizationPublicKeyCredentialPRFAssertionInput") as? NSObject.Type,
+           let prfAlloc = PRFAssertInputClass.perform(NSSelectorFromString("alloc"))?.takeUnretainedValue() as? NSObject {
+          let initSel = NSSelectorFromString("initWithInput:salt:")
+          if prfAlloc.responds(to: initSel),
+             let prfInput = prfAlloc.perform(initSel, with: firstData, with: secondData)?.takeUnretainedValue() {
+            (authRequest as AnyObject).setValue(prfInput, forKey: "prf")
+            configured = true
+            print("Passkey (Native PRF): Attached PRFAssertionInput to platform get request")
+          }
+        }
+
+        if !configured, let PRFRegInputClass = NSClassFromString("ASAuthorizationPublicKeyCredentialPRFRegistrationInput") as? NSObject.Type,
+           let prfAlloc = PRFRegInputClass.perform(NSSelectorFromString("alloc"))?.takeUnretainedValue() as? NSObject {
+          let initSel = NSSelectorFromString("initWithInput:salt:")
+          if prfAlloc.responds(to: initSel),
+             let prfInput = prfAlloc.perform(initSel, with: firstData, with: secondData)?.takeUnretainedValue() {
+            (authRequest as AnyObject).setValue(prfInput, forKey: "prf")
+            configured = true
+            print("Passkey (Native PRF): Attached PRFRegistrationInput (fallback) to platform get request")
+          }
+        }
+
+        if !configured {
+          print("Passkey (PRF): Native PRF inputs class not found or property unavailable, using custom fallback")
+        }
+      }
     }
     
     return authRequest;
